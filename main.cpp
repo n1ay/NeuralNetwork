@@ -63,13 +63,14 @@ int main() {
 	nn.y[2] = 0;
 
 	nn.propagate();
-	nn.backPropagate();
+	nn.backPropagateError();
+/*
 	cout<<nn.getOutput()<<endl;
 
 	for(int i=0; i<nn.layers-1; i++) {
 		cout<<nn.delta[i]<<endl;
 	}
-
+*/
 	return 0;
 }
 
