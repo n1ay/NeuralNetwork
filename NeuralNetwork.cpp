@@ -15,6 +15,7 @@ NeuralNetwork::NeuralNetwork(int layers): layers(layers) {
 	a = std::vector<arma::mat>(layers);
 	z = std::vector<arma::mat>(layers-1);
 	theta = std::vector<arma::mat>(layers-1);
+	delta = std::vector<arma::mat>(layers-1);
 }
 
 NeuralNetwork::~NeuralNetwork() {
@@ -32,11 +33,13 @@ void NeuralNetwork::setLayersSizes(std::initializer_list<int> list) {
 
 void NeuralNetwork::addBiasUnit(arma::mat& vector) {
 	int rows = vector.n_rows;
-	vector.reshape(rows+1, 1);
+	vector.resize(rows+1, 1);
 	vector[rows] = 1;
 }
 
 void NeuralNetwork::propagate() {
+	a[0] = x;
+	addBiasUnit(a[0]);
 	for(int i=0; i<layers-1; i++) {
 		z[i] = theta[i].t()*a[i];
 		a[i+1] = sigmoid(z[i]);
@@ -64,4 +67,13 @@ arma::mat inline NeuralNetwork::sigmoid(const arma::mat& matrix) {
 
 arma::mat NeuralNetwork::getOutput() {
 	return a[layers-1];
+}
+
+void NeuralNetwork::backPropagate() {
+	delta[layers-2] = y - a[layers-1];
+	for(int i=layers-3; i>=0; i--) {
+		arma::mat th = theta[i+1];
+		th.resize(th.n_rows-1, th.n_cols);
+		delta[i] = th*delta[i+1];
+	}
 }
