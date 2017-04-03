@@ -17,15 +17,15 @@
  * 3) randomInitialize
  * 4) set TrainingData & TrainingValues
  * 5) propagateAllTrainingData
- * 6) ...
+ * 6) gradientDescent
  *
  */
 
 struct NeuralNetwork {
 
-	double init = 1;
-	double epsilon = 1;
-	double lambda = 1;
+	double step = 0.05;
+	double epsilon = 10e-4;
+	double lambda = 5;
 
 	int layers;
 	std::vector<int> layersSizes;
@@ -40,7 +40,6 @@ struct NeuralNetwork {
 	std::vector<arma::mat> trainingValues;
 	std::vector<arma::mat> trainingOutput;
 	arma::mat x;
-	arma::mat y;
 
 	NeuralNetwork(int layers);
 	virtual ~NeuralNetwork();
@@ -49,11 +48,13 @@ struct NeuralNetwork {
 	void addBiasUnit(arma::mat& vector);
 	void propagate();
 	void propagateAllTrainingData();
-	void backPropagateError();
+	void backPropagateError(arma::mat y);
 	void accumulateGradient();
 	arma::mat getOutput();
 	void randomInitialize();
 	double costFunction();
+	void gradientDescent(int maxIter = 1000);
+	void printLayers(std::vector<arma::mat> list);
 
 	double inline static sigmoid(double number);
 	double inline static sigmoidGradient(double number);
