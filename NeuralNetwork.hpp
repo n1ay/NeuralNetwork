@@ -25,7 +25,7 @@ struct NeuralNetwork {
 
 	double step = 0.05;
 	double epsilon = 10e-4;
-	double lambda = 5;
+	double lambda = 0;
 
 	int layers;
 	std::vector<int> layersSizes;
@@ -48,13 +48,14 @@ struct NeuralNetwork {
 	void addBiasUnit(arma::mat& vector);
 	void propagate();
 	void propagateAllTrainingData();
-	void backPropagateError(arma::mat y);
+	void backPropagateError(arma::mat y, arma::mat hypothesis);
 	void accumulateGradient();
 	arma::mat getOutput();
 	void randomInitialize();
 	double costFunction();
 	void gradientDescent(int maxIter = 1000);
 	void printLayers(std::vector<arma::mat> list);
+	double inline singleCost(double y, double hypothesis);
 
 	double inline static sigmoid(double number);
 	double inline static sigmoidGradient(double number);

@@ -82,15 +82,31 @@ double inline NeuralNetwork::sigmoidGradient(double number) {
 }
 
 arma::mat inline NeuralNetwork::sigmoidGradient(const arma::mat& matrix) {
-	return sigmoid(matrix)%(1-sigmoid(matrix));
+	int rows = matrix.n_rows;
+		int cols = matrix.n_cols;
+		arma::mat result = arma::mat(rows, cols);
+
+		if(rows > cols) {
+			#pragma omp parallel for
+			for(int i=0; i<rows; i++)
+				for(int j=0; j<cols; j++)
+					result(i, j) = sigmoidGradient(matrix(i, j));
+		}
+		else {
+			#pragma omp parallel for
+			for(int j=0; j<cols; j++)
+				for(int i=0; i< rows; i++)
+					result(i, j) = sigmoidGradient(matrix(i, j));
+		}
+		return result;
 }
 
 arma::mat NeuralNetwork::getOutput() {
 	return a[layers-1];
 }
 
-void NeuralNetwork::backPropagateError(arma::mat y) {
-	delta[layers-2] = y - a[layers-1];
+void NeuralNetwork::backPropagateError(arma::mat y, arma::mat hypothesis) {
+	delta[layers-2] = y - hypothesis;
 	for(int i=layers-3; i>=0; i--) {
 		arma::mat th = theta[i+1];
 		th.resize(th.n_rows-1, th.n_cols);
@@ -104,7 +120,7 @@ void NeuralNetwork::randomInitialize() {
 	int previousLayerSize;
 	int nextLayerSize;
 
-	int init = sqrt(6)/sqrt(layersSizes[0]+layersSizes[layers-1]);
+	double init = sqrt(6)/sqrt(layersSizes[0]+layersSizes[layers-1]);
 
 	#pragma omp parallel for
 	for(int i=0; i<layers-1; i++) {
@@ -134,7 +150,7 @@ double NeuralNetwork::costFunction() {
 	#pragma omp parallel for
 	for(int i=0; i<trainingData.size(); i++) {
 		for(int j=0; j<layersSizes[layers-1]; j++) {
-			cost += (-trainingValues[i][j]*log(trainingOutput[i][j]) - (1-trainingValues[i][j])*log(1-trainingOutput[i][j]));
+			cost += singleCost(trainingValues[i][j], trainingOutput[i][j]);
 		}
 	}
 	cost /= trainingData.size();
@@ -147,7 +163,7 @@ void NeuralNetwork::accumulateGradient() {
 		gradient[i].fill(0);
 	}
 	for(int k=0; k<trainingOutput.size(); k++) {
-		backPropagateError(trainingOutput[k]);
+		backPropagateError(trainingValues[k], trainingOutput[k]);
 		#pragma omp parallel for
 		for(int i=0; i<layers-1; i++) {
 			gradient[i] += a[i]*delta[i].t();
@@ -155,8 +171,8 @@ void NeuralNetwork::accumulateGradient() {
 			for(int j=0; j<th.n_cols; j++)
 				th(th.n_rows-1, j) = 0;
 			th*=lambda;
-			gradient[i] += gradient[i] + th;
-			gradient[i] += gradient[i]/trainingData.size();
+			gradient[i] += th;
+			gradient[i] /= trainingData.size();
 		}
 	}
 }
@@ -174,15 +190,16 @@ void NeuralNetwork::gradientDescent(int maxIter) {
 	double prevprevCost = INFINITY;
 	double prevCost = INFINITY;
 	double cost = costFunction();
-	accumulateGradient();
 	for(int i=1; i<maxIter; i++) {
 		if ((prevCost == cost) && (prevprevCost == cost)) {
 			std::cout<<"Minimum found. Iteration: "<<i<<std::endl;
 			return;
 		}
 		else {
+			std::cout<<"Cost: "<<cost<<std::endl;
 			prevprevCost = prevCost;
 			prevCost = cost;
+			accumulateGradient();
 			#pragma omp parallel for
 			for(int i=0; i<gradient.size(); i++)
 				theta[i] = theta[i] - gradient[i]*step;
@@ -194,4 +211,8 @@ void NeuralNetwork::gradientDescent(int maxIter) {
 void NeuralNetwork::printLayers(std::vector<arma::mat> list) {
 	for(auto iter: list)
 		std::cout<<iter<<std::endl;
+}
+
+double inline NeuralNetwork::singleCost(double y, double hypothesis) {
+	return -y*log(hypothesis) - (1-y)*log(1-hypothesis);
 }
