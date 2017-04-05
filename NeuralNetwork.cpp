@@ -21,6 +21,9 @@ NeuralNetwork::NeuralNetwork(int layers): layers(layers) {
 	trainingData = std::vector<arma::mat>();
 	trainingValues = std::vector<arma::mat>();
 	trainingOutput = std::vector<arma::mat>();
+
+	testData = std::vector<arma::mat>();
+	testValues = std::vector<arma::mat>();
 }
 
 NeuralNetwork::~NeuralNetwork() {
@@ -221,17 +224,19 @@ void NeuralNetwork::propagateAllTrainingData() {
 	}
 }
 
-void NeuralNetwork::gradientDescent(int maxIter) {
+void NeuralNetwork::gradientDescent(int maxIter, bool quiet) {
 	double prevprevCost = INFINITY;
 	double prevCost = INFINITY;
 	double cost = costFunction();
 	for(int i=1; i<maxIter; i++) {
 		if ((prevCost - cost < epsilonStep) && (prevprevCost - prevCost < epsilonStep)) {
-			std::cout<<"Minimum found. Iteration: "<<i<<std::endl;
+			if(!quiet)
+				std::cout<<"Minimum found. Iteration: "<<i<<std::endl;
 			return;
 		}
 		else {
-			std::cout<<"Cost: "<<cost<<std::endl;
+			if(!quiet)
+				std::cout<<"Cost: "<<cost<<std::endl;
 			prevprevCost = prevCost;
 			prevCost = cost;
 			//An additional check if this function is bug-free
@@ -252,4 +257,25 @@ void NeuralNetwork::printLayers(std::vector<arma::mat> list) {
 
 double inline NeuralNetwork::singleCost(double y, double hypothesis) {
 	return -y*log(hypothesis) - (1-y)*log(1-hypothesis);
+}
+
+void NeuralNetwork::test() {
+	if(getResult == nullptr) {
+		std::cerr<<"You have to implement function to get result"<<std::endl;
+		exit(-1);
+	}
+	int errors = 0;
+	for(int i=0; i<testData.size(); i++) {
+		x = testData[i];
+		propagate();
+		arma::mat res = getResult(getOutput() - testValues[i]);
+		for(int j=0; j<res.n_rows; j++) {
+			if(res[j]!=0) {
+				errors++;
+				break;
+			}
+		}
+	}
+	std::cout<<"Data test: "<<(testData.size()-errors)<<"/"<<testData.size()<<" ("<<(testData.size()-errors)*100.0/testData.size()<<")"<<std::endl;
+
 }

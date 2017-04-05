@@ -40,7 +40,11 @@ struct NeuralNetwork {
 	std::vector<arma::mat> trainingData;
 	std::vector<arma::mat> trainingValues;
 	std::vector<arma::mat> trainingOutput;
+	std::vector<arma::mat> testData;
+	std::vector<arma::mat> testValues;
 	arma::mat x;
+
+	arma::mat (*getResult)(arma::mat result) = nullptr;
 
 	NeuralNetwork(int layers);
 	virtual ~NeuralNetwork();
@@ -54,11 +58,12 @@ struct NeuralNetwork {
 	arma::mat getOutput();
 	void randomInitialize();
 	double costFunction();
-	void gradientDescent(int maxIter = 1000);
+	void gradientDescent(int maxIter = 1000, bool quiet=true);
 	void printLayers(std::vector<arma::mat> list);
 	double inline singleCost(double y, double hypothesis);
 	double checkGradient(int layer, int row, int col, bool accumulate = false);
 	void checkGradientAll();
+	void test();
 
 	double inline static sigmoid(double number);
 	double inline static sigmoidGradient(double number);
