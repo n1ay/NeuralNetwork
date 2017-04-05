@@ -105,8 +105,10 @@ arma::mat NeuralNetwork::getOutput() {
 	return a[layers-1];
 }
 
-void NeuralNetwork::backPropagateError(arma::mat y, arma::mat hypothesis) {
-	delta[layers-2] = hypothesis - y;
+void NeuralNetwork::backPropagateError(arma::mat x, arma::mat y) {
+	this -> x = x;
+	propagate();
+	delta[layers-2] = a[layers-1] - y;
 	for(int i=layers-3; i>=0; i--) {
 		arma::mat th = theta[i+1];
 		th.resize(th.n_rows-1, th.n_cols);
@@ -163,7 +165,7 @@ void NeuralNetwork::accumulateGradient() {
 		gradient[i].fill(0);
 	}
 	for(int k=0; k<trainingOutput.size(); k++) {
-		backPropagateError(trainingValues[k], trainingOutput[k]);
+		backPropagateError(trainingData[k], trainingValues[k]);
 		#pragma omp parallel for
 		for(int i=0; i<layers-1; i++) {
 			gradient[i] += a[i]*delta[i].t();
@@ -172,9 +174,10 @@ void NeuralNetwork::accumulateGradient() {
 				th(th.n_rows-1, j) = 0;
 			th*=lambda;
 			gradient[i] += th;
-			gradient[i] /= trainingData.size();
 		}
 	}
+	for(int i=0; i<gradient.size(); i++)
+		gradient[i] /= trainingData.size();
 }
 
 double NeuralNetwork::checkGradient(int layer, int row, int col, bool accumulate) {
@@ -205,8 +208,8 @@ void NeuralNetwork::checkGradientAll() {
 	for(int i=0; i<gradient.size(); i++) {
 		std::cout<<gradient[i]<<std::endl;
 		std::cout<<gradientDefinition[i]<<std::endl;
-		gradient = gradientDefinition;
 	}
+	gradient = gradientDefinition;
 }
 
 void NeuralNetwork::propagateAllTrainingData() {
@@ -231,9 +234,9 @@ void NeuralNetwork::gradientDescent(int maxIter) {
 			std::cout<<"Cost: "<<cost<<std::endl;
 			prevprevCost = prevCost;
 			prevCost = cost;
+			//An additional check if this function is bug-free
+			//checkGradientAll();
 			accumulateGradient();
-			//TODO
-			checkGradientAll();
 			#pragma omp parallel for
 			for(int i=0; i<gradient.size(); i++)
 				theta[i] = theta[i] - gradient[i]*step;

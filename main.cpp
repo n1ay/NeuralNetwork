@@ -59,7 +59,6 @@ int main() {
 		cout<<nn.getOutput()<<endl;
 	}
 
-
 	return 0;
 }
 
