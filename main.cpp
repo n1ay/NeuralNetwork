@@ -38,26 +38,27 @@ int main() {
 	nn.randomInitialize();
 	nn.propagateAllTrainingData();
 
-	nn.gradientDescent(5);
-	/*
+	nn.gradientDescent(2000);
 
-	nn.x = mat("0; 0");
-	nn.propagate();
-	cout<<nn.getOutput()<<endl;
 
-	nn.x = mat("1; 0");
-	nn.propagate();
-	cout<<nn.getOutput()<<endl;
+	if(true) {
+		nn.x = mat("0; 0");
+		nn.propagate();
+		cout<<nn.getOutput()<<endl;
 
-	nn.x = mat("0; 1");
-	nn.propagate();
-	cout<<nn.getOutput()<<endl;
+		nn.x = mat("1; 0");
+		nn.propagate();
+		cout<<nn.getOutput()<<endl;
 
-	nn.x = mat("1; 1");
-	nn.propagate();
-	cout<<nn.getOutput()<<endl;
+		nn.x = mat("0; 1");
+		nn.propagate();
+		cout<<nn.getOutput()<<endl;
 
-	*/
+		nn.x = mat("1; 1");
+		nn.propagate();
+		cout<<nn.getOutput()<<endl;
+	}
+
 
 	return 0;
 }

@@ -106,7 +106,7 @@ arma::mat NeuralNetwork::getOutput() {
 }
 
 void NeuralNetwork::backPropagateError(arma::mat y, arma::mat hypothesis) {
-	delta[layers-2] = y - hypothesis;
+	delta[layers-2] = hypothesis - y;
 	for(int i=layers-3; i>=0; i--) {
 		arma::mat th = theta[i+1];
 		th.resize(th.n_rows-1, th.n_cols);
@@ -177,6 +177,38 @@ void NeuralNetwork::accumulateGradient() {
 	}
 }
 
+double NeuralNetwork::checkGradient(int layer, int row, int col, bool accumulate) {
+	if(accumulate)
+		accumulateGradient();
+	double gradient = this->gradient[layer](row, col);
+	std::vector<arma::mat> thetaPlus = theta;
+	std::vector<arma::mat> thetaMinus = theta;
+	std::vector<arma::mat> thetaTmp = theta;
+	thetaPlus[layer](row, col) += epsilon;
+	thetaMinus[layer](row, col) -= epsilon;
+	theta = thetaPlus;
+	double costPlus = costFunction();
+	theta = thetaMinus;
+	double costMinus = costFunction();
+	theta = thetaTmp;
+	return (costPlus - costMinus)/(2*epsilon);
+}
+
+void NeuralNetwork::checkGradientAll() {
+	accumulateGradient();
+	std::vector<arma::mat> gradientDefinition = gradient;
+	for(int i=0; i<gradient.size(); i++)
+		for(int j=0; j<gradient[i].n_rows; j++)
+			for(int k=0; k<gradient[i].n_cols; k++)
+				gradientDefinition[i](j, k) = checkGradient(i, j, k);
+
+	for(int i=0; i<gradient.size(); i++) {
+		std::cout<<gradient[i]<<std::endl;
+		std::cout<<gradientDefinition[i]<<std::endl;
+		gradient = gradientDefinition;
+	}
+}
+
 void NeuralNetwork::propagateAllTrainingData() {
 	trainingOutput.clear();
 	for(int i=0; i<trainingData.size(); i++) {
@@ -191,7 +223,7 @@ void NeuralNetwork::gradientDescent(int maxIter) {
 	double prevCost = INFINITY;
 	double cost = costFunction();
 	for(int i=1; i<maxIter; i++) {
-		if ((prevCost == cost) && (prevprevCost == cost)) {
+		if ((prevCost - cost < epsilonStep) && (prevprevCost - prevCost < epsilonStep)) {
 			std::cout<<"Minimum found. Iteration: "<<i<<std::endl;
 			return;
 		}
@@ -200,6 +232,8 @@ void NeuralNetwork::gradientDescent(int maxIter) {
 			prevprevCost = prevCost;
 			prevCost = cost;
 			accumulateGradient();
+			//TODO
+			checkGradientAll();
 			#pragma omp parallel for
 			for(int i=0; i<gradient.size(); i++)
 				theta[i] = theta[i] - gradient[i]*step;

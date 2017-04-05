@@ -23,7 +23,8 @@
 
 struct NeuralNetwork {
 
-	double step = 0.05;
+	double epsilonStep = 10e-6;
+	double step = 0.5;
 	double epsilon = 10e-4;
 	double lambda = 0;
 
@@ -56,6 +57,8 @@ struct NeuralNetwork {
 	void gradientDescent(int maxIter = 1000);
 	void printLayers(std::vector<arma::mat> list);
 	double inline singleCost(double y, double hypothesis);
+	double checkGradient(int layer, int row, int col, bool accumulate = false);
+	void checkGradientAll();
 
 	double inline static sigmoid(double number);
 	double inline static sigmoidGradient(double number);
