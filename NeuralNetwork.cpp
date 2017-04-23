@@ -264,7 +264,22 @@ void NeuralNetwork::test() {
 		std::cerr<<"You have to implement function to get result"<<std::endl;
 		exit(-1);
 	}
+
 	int errors = 0;
+		for(int i=0; i<trainingData.size(); i++) {
+			x = trainingData[i];
+			propagate();
+			arma::mat res = getResult(getOutput() - trainingValues[i]);
+			for(int j=0; j<res.n_rows; j++) {
+				if(res[j]!=0) {
+					errors++;
+					break;
+				}
+			}
+		}
+		std::cout<<"Data training: "<<(trainingData.size()-errors)<<"/"<<trainingData.size()<<" ("<<(trainingData.size()-errors)*100.0/trainingData.size()<<"%)"<<std::endl;
+
+	errors = 0;
 	for(int i=0; i<testData.size(); i++) {
 		x = testData[i];
 		propagate();
@@ -276,6 +291,5 @@ void NeuralNetwork::test() {
 			}
 		}
 	}
-	std::cout<<"Data test: "<<(testData.size()-errors)<<"/"<<testData.size()<<" ("<<(testData.size()-errors)*100.0/testData.size()<<")"<<std::endl;
-
+	std::cout<<"Data test: "<<(testData.size()-errors)<<"/"<<testData.size()<<" ("<<(testData.size()-errors)*100.0/testData.size()<<"%)"<<std::endl;
 }
