@@ -6,6 +6,14 @@
 #include <tuple>
 #include <iostream>
 
+//some useful typedefs
+template <typename T> struct NeuralNetwork;
+using NN = NeuralNetwork<double>;
+using NNf = NeuralNetwork<float>;
+using matf = arma::Mat<float>;
+
+//add -D_USE_CV_ to g++ to use this; it needs opencv to work
+//this is a set of useful function for image loading and compressing
 #ifdef _USE_CV_
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -28,30 +36,55 @@ void loadImages(std::string inputImgsFilename, std::vector<cv::Mat>& inputImgs, 
 #endif
 
 /*
+ * How to run
+ *
  * 1) create NN class
  * 2) setLayersSizes
  * 3) randomInitialize
  * 4) set TrainingData & TrainingValues
  * 5) propagateAllTrainingData
- * 6) gradientDescent
- * 7) define getResult function & test
+ * 6) set
+ * 7) gradientDescent
+ * 8) define getResult function & test
  */
 
 template <typename T = float>
 struct NeuralNetwork {
 
-	double epsilonStep = 10e-6;
-	double epsilon = 10e-4;
+	static const int SIGMOID = 0;
+	static const int TANH = 1;
+
+	//if cost decrease is lower than this value then training algorithm stops
+	T minCostDecrease = 10e-6;
+
+	//value used for gradient checking and calculating f'
+	T epsilon = 10e-4;
 
 	//learning rate
-	double step = 0.3;
-	double stepMin = 0;
-	double stepMax = 0;
-	double stepDecrasePercent = 0;
-	double stepDecraseValue = 0;
+	T learningRate = 0.3;
+
+	//learning rate will always be at least this value
+	T learningRateMin = 0;
+
+	//learning rate won't be higher than this value, but when set to 0 it won't check it
+	T learningRateMax = 0;
+
+	/*
+	 * Learning rate decreases every iteration in accordance with given equation
+	 * learningRate -= learningRate*learningRateDecrasePercent/100;
+	 * learningRate -= learningRateDecraseValue;
+	 */
+	T learningRateDecrasePercent = 0;
+
+	/*
+	 * Learning rate decreases every iteration in accordance with given equation
+	 * learningRate -= learningRate*learningRateDecrasePercent/100;
+	 * learningRate -= learningRateDecraseValue;
+	 */
+	T learningRateDecraseValue = 0;
 
 	//regularization parameter
-	double lambda = 0;
+	T regularizationParameter = 0;
 
 	//save theta parameters every Nth iteration
 	int saveN = 0;
@@ -71,11 +104,38 @@ struct NeuralNetwork {
 	std::vector<arma::Mat<T> > testData;
 	std::vector<arma::Mat<T> > testValues;
 	arma::Mat<T> x;
-
-	arma::Mat<T> (*getResult)(arma::Mat<T> result) = nullptr;
+	int activationFunction = SIGMOID;
 
 	NeuralNetwork(std::initializer_list<int> list);
 	virtual ~NeuralNetwork();
+
+	T inline static sigmoid(T number);
+	T inline static tanh(T number);
+	T inline static sigmoidGradient(T number);
+	T inline static tanhGradient(T number);
+	template <typename B> arma::Mat<T> mapMatrix (const arma::Mat<T>& matrix, B binaryOp) {
+		int rows = matrix.n_rows;
+		int cols = matrix.n_cols;
+		arma::Mat<T> result = arma::Mat<T>(rows, cols);
+
+		if(rows > cols) {
+			#pragma omp parallel for
+			for(int i=0; i<rows; i++)
+				for(int j=0; j<cols; j++)
+					result(i, j) = binaryOp(matrix(i, j), *this);
+		}
+		else {
+			#pragma omp parallel for
+			for(int j=0; j<cols; j++)
+				for(int i=0; i< rows; i++)
+					result(i, j) = binaryOp(matrix(i, j), *this);
+		}
+		return result;
+	}
+
+	arma::Mat<T> (*getResult)(arma::Mat<T> result) = nullptr;
+	T inline activationFun(T number);
+	T inline activationGradient(T number);
 
 	void addBiasUnit(arma::Mat<T>& vector);
 	void propagate();
@@ -84,21 +144,16 @@ struct NeuralNetwork {
 	void accumulateGradient();
 	arma::Mat<T> getOutput();
 	void randomInitialize(bool setBiasToZeros = false);
-	double costFunction();
+	T costFunction();
 	void gradientDescent(int maxIter = 1000, bool quiet=true);
 	void printLayers(std::vector<arma::Mat<T> > list);
 	void printLayers(std::vector<int> list);
-	double inline singleCost(double y, double hypothesis);
-	double checkGradient(int layer, int row, int col, bool accumulate = false);
+	T inline singleCost(T y, T hypothesis);
+	T checkGradient(int layer, int row, int col, bool accumulate = false);
 	void checkGradientAll();
 	void test();
 	void loadParams();
 	void saveParams();
-
-	double inline static sigmoid(double number);
-	double inline static sigmoidGradient(double number);
-	arma::Mat<T> inline static sigmoid(const arma::Mat<T>& matrix);
-	arma::Mat<T> inline static sigmoidGradient(const arma::Mat<T>& matrix);
 };
 
 template <typename T>
@@ -138,7 +193,7 @@ void NeuralNetwork<T>::propagate() {
 		addBiasUnit(a[0]);
 	for(int i=0; i<layers-1; i++) {
 		z[i] = theta[i].t()*a[i];
-		a[i+1] = sigmoid(z[i]);
+		a[i+1] = mapMatrix(z[i], [](double num, NeuralNetwork net){return net.activationFun(num);});
 		if(i+1 < layers-1)
 			addBiasUnit(a[i+1]);
 	}
@@ -173,55 +228,39 @@ void NeuralNetwork<T>::saveParams() {
 }
 
 template <typename T>
-double inline NeuralNetwork<T>::sigmoid(const double number) {
+T inline NeuralNetwork<T>::sigmoid(const T number) {
 	return 1.0/(1.0 + pow(M_E, -1.0*number));
 }
 
 template <typename T>
-arma::Mat<T> inline NeuralNetwork<T>::sigmoid(const arma::Mat<T>& matrix) {
-	int rows = matrix.n_rows;
-	int cols = matrix.n_cols;
-	arma::Mat<T> result = arma::Mat<T>(rows, cols);
-
-	if(rows > cols) {
-		#pragma omp parallel for
-		for(int i=0; i<rows; i++)
-			for(int j=0; j<cols; j++)
-				result(i, j) = sigmoid(matrix(i, j));
-	}
-	else {
-		#pragma omp parallel for
-		for(int j=0; j<cols; j++)
-			for(int i=0; i< rows; i++)
-				result(i, j) = sigmoid(matrix(i, j));
-	}
-	return result;
+T inline NeuralNetwork<T>::tanh(const T number) {
+	return 2.0/(1 + pow(M_E, -number*2)) - 1;
 }
 
 template <typename T>
-double inline NeuralNetwork<T>::sigmoidGradient(double number) {
+T inline NeuralNetwork<T>::sigmoidGradient(T number) {
 	return sigmoid(number)*(1-sigmoid(number));
 }
 
 template <typename T>
-arma::Mat<T> inline NeuralNetwork<T>::sigmoidGradient(const arma::Mat<T>& matrix) {
-	int rows = matrix.n_rows;
-		int cols = matrix.n_cols;
-		arma::Mat<T> result = arma::Mat<T>(rows, cols);
+T inline NeuralNetwork<T>::tanhGradient(const T number) {
+	return (1-tanh(number)*tanh(number));
+}
 
-		if(rows > cols) {
-			#pragma omp parallel for
-			for(int i=0; i<rows; i++)
-				for(int j=0; j<cols; j++)
-					result(i, j) = sigmoidGradient(matrix(i, j));
-		}
-		else {
-			#pragma omp parallel for
-			for(int j=0; j<cols; j++)
-				for(int i=0; i< rows; i++)
-					result(i, j) = sigmoidGradient(matrix(i, j));
-		}
-		return result;
+template <typename T>
+T inline NeuralNetwork<T>::activationFun(const T number) {
+	if(activationFunction == SIGMOID)
+		return sigmoid(number);
+	else if(activationFunction == TANH)
+		return tanh(number);
+}
+
+template <typename T>
+T inline NeuralNetwork<T>::activationGradient(const T number) {
+	if(activationFunction == SIGMOID)
+		return sigmoidGradient(number);
+	else if(activationFunction == TANH)
+		return tanhGradient(number);
 }
 
 template <typename T>
@@ -238,7 +277,7 @@ void NeuralNetwork<T>::backPropagateError(arma::Mat<T> x, arma::Mat<T> y) {
 		arma::Mat<T> th = theta[i+1];
 		th.resize(th.n_rows-1, th.n_cols);
 		delta[i] = th*delta[i+1];
-		delta[i] = delta[i] % sigmoidGradient(z[i]);
+		delta[i] = delta[i] % mapMatrix(z[i], [](double num, NeuralNetwork net){return net.activationGradient(num);});
 	}
 }
 
@@ -248,7 +287,7 @@ void NeuralNetwork<T>::randomInitialize(bool setBiasParamsToZeros) {
 	int previousLayerSize;
 	int nextLayerSize;
 
-	double init = sqrt(6)/sqrt(layersSizes[0]+layersSizes[layers-1]);
+	T init = sqrt(6)/sqrt(layersSizes[0]+layersSizes[layers-1]);
 
 	#pragma omp parallel for
 	for(int i=0; i<layers-1; i++) {
@@ -267,8 +306,8 @@ void NeuralNetwork<T>::randomInitialize(bool setBiasParamsToZeros) {
 }
 
 template <typename T>
-double NeuralNetwork<T>::costFunction() {
-	double cost = 0;
+T NeuralNetwork<T>::costFunction() {
+	T cost = 0;
 	propagateAllTrainingData();
 
 	//regularization for cost function
@@ -279,7 +318,7 @@ double NeuralNetwork<T>::costFunction() {
 		arma::square(th);
 		cost += arma::accu(th);
 	}
-	cost *= (lambda/2);
+	cost *= (regularizationParameter/2);
 
 	#pragma omp parallel for
 	for(int i=0; i<trainingData.size(); i++) {
@@ -305,7 +344,7 @@ void NeuralNetwork<T>::accumulateGradient() {
 			arma::Mat<T> th = theta[i];
 			for(int j=0; j<th.n_cols; j++)
 				th(th.n_rows-1, j) = 0;
-			th*=lambda;
+			th*=regularizationParameter;
 			gradient[i] += th;
 		}
 	}
@@ -314,19 +353,19 @@ void NeuralNetwork<T>::accumulateGradient() {
 }
 
 template <typename T>
-double NeuralNetwork<T>::checkGradient(int layer, int row, int col, bool accumulate) {
+T NeuralNetwork<T>::checkGradient(int layer, int row, int col, bool accumulate) {
 	if(accumulate)
 		accumulateGradient();
-	double gradient = this->gradient[layer](row, col);
+	T gradient = this->gradient[layer](row, col);
 	std::vector<arma::Mat<T> > thetaPlus = theta;
 	std::vector<arma::Mat<T> > thetaMinus = theta;
 	std::vector<arma::Mat<T> > thetaTmp = theta;
 	thetaPlus[layer](row, col) += epsilon;
 	thetaMinus[layer](row, col) -= epsilon;
 	theta = thetaPlus;
-	double costPlus = costFunction();
+	T costPlus = costFunction();
 	theta = thetaMinus;
-	double costMinus = costFunction();
+	T costMinus = costFunction();
 	theta = thetaTmp;
 	return (costPlus - costMinus)/(2*epsilon);
 }
@@ -359,11 +398,11 @@ void NeuralNetwork<T>::propagateAllTrainingData() {
 
 template <typename T>
 void NeuralNetwork<T>::gradientDescent(int maxIter, bool quiet) {
-	double prevprevCost = INFINITY;
-	double prevCost = INFINITY;
-	double cost = costFunction();
+	T prevprevCost = INT_MAX;
+	T prevCost = INT_MAX - 1;
+	T cost = costFunction();
 	for(int i=1; i<maxIter; i++) {
-		if ((prevCost - cost < epsilonStep) && (prevprevCost - prevCost < epsilonStep)) {
+		if ((prevCost - cost < minCostDecrease) && (prevprevCost - prevCost < minCostDecrease)) {
 			if(!quiet)
 				std::cout<<"Minimum found. Iteration: "<<i<<std::endl;
 			return;
@@ -378,14 +417,14 @@ void NeuralNetwork<T>::gradientDescent(int maxIter, bool quiet) {
 			accumulateGradient();
 			#pragma omp parallel for
 			for(int i=0; i<gradient.size(); i++)
-				theta[i] = theta[i] - gradient[i]*step;
+				theta[i] = theta[i] - gradient[i]*learningRate;
 			cost = costFunction();
-			step -= step*stepDecrasePercent/100;
-			step -= stepDecraseValue;
-			if(step < stepMin)
-				step = stepMin;
-			if(step > stepMax)
-				step = stepMax;
+			learningRate -= learningRate*learningRateDecrasePercent/100;
+			learningRate -= learningRateDecraseValue;
+			if(learningRate < learningRateMin)
+				learningRate = learningRateMin;
+			if((learningRateMax > 0) && (learningRate > learningRateMax))
+				learningRate = learningRateMax;
 			if((saveN > 0) && (i%saveN == 0)) {
 				saveParams();
 			}
@@ -406,7 +445,7 @@ void NeuralNetwork<T>::printLayers(std::vector<int> list) {
 }
 
 template <typename T>
-double inline NeuralNetwork<T>::singleCost(double y, double hypothesis) {
+T inline NeuralNetwork<T>::singleCost(T y, T hypothesis) {
 	return -y*log(hypothesis) - (1-y)*log(1-hypothesis);
 }
 
